@@ -1,17 +1,59 @@
 import { PrismaClient } from "@prisma/client";
 import express, { request, response } from "express";
+import bcrypt from "bcryptjs"; 
+
 const app = express();
 app.use(express.json());
 
 const prisma = new PrismaClient();
 
+
+// ROTA DE LOGIN
+app.post("/login", async (request, response) => {
+  const { email, senha } = request.body;
+
+  try {
+    const usuario = await prisma.Usuario.findUnique({
+      where: { email },
+    });
+
+    if (!usuario) {
+      return response.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    const senhaValida = await bcrypt.compare(senha, usuario.senha);
+
+    if (!senhaValida) {
+      return response.status(401).json({ error: "Senha incorreta" });
+    }
+
+    
+    const { senha: _, ...dadosUsuario } = usuario;
+    response.status(200).json(dadosUsuario);
+  } catch (error) {
+    response.status(500).json({ error: error.message });
+  }
+});
+
+
+
+
+
+
+
+// ROTA PARA CRIAR USUARIO
 app.post("/usuarios", async (request, response) => {
   try {
+
+
+    const hashedPassword = await bcrypt.hash(request.body.senha, 10);
+
     const usuarios = await prisma.Usuario.create({
       data: {
         nome: request.body.nome,
         email: request.body.email,
         idade: request.body.idade,
+        senha: hashedPassword,
       },
     });
     response.status(201).json(usuarios);
@@ -20,6 +62,8 @@ app.post("/usuarios", async (request, response) => {
   }
 });
 
+
+// ROTA PARA BUSCAR USUARIO
 app.get("/usuarios", async (request, response) => {
   const { nome, email, idade } = request.query;
 
@@ -36,6 +80,9 @@ app.get("/usuarios", async (request, response) => {
   response.status(201).json(usuarios);
 });
 
+
+
+// ROTA PARA ATUALIZAR USUARIO
 app.put("/usuarios/:id", async (request, response) => {
   console.log(request);
 
@@ -48,6 +95,7 @@ app.put("/usuarios/:id", async (request, response) => {
         nome: request.body.nome,
         email: request.body.email,
         idade: request.body.idade,
+        senha: request.body.senha,
       },
     });
     response.status(201).json(usuarios);
@@ -58,6 +106,9 @@ app.put("/usuarios/:id", async (request, response) => {
   response.status(203).json(request.body);
 });
 
+
+
+// ROTA PARA EXCLUIR USUARIO
 app.delete("/usuarios/:id", async (request, response) => {
   await prisma.Usuario.delete({
     where: {
@@ -67,6 +118,13 @@ app.delete("/usuarios/:id", async (request, response) => {
 
   response.status(200).json({ message: "Usuário deletado" });
 });
+
+
+
+
+
+
+
 
 app.listen(3000);
 
