@@ -83,27 +83,32 @@ app.get("/usuarios", async (request, response) => {
 
 
 // ROTA PARA ATUALIZAR USUARIO
-app.put("/usuarios/:id", async (request, response) => {
-  console.log(request);
-
+  app.put("/usuarios/:id", async (request, response) => {
   try {
-    const usuarios = await prisma.Usuario.update({
+    const { nome, email, idade, senha } = request.body;
+
+    const dataToUpdate = {
+      nome,
+      email,
+      idade,
+    };
+
+    if (senha) {
+      const hashedSenha = await bcrypt.hash(senha, 10);
+      dataToUpdate.senha = hashedSenha;
+    }
+
+    const usuario = await prisma.Usuario.update({
       where: {
         id: request.params.id,
       },
-      data: {
-        nome: request.body.nome,
-        email: request.body.email,
-        idade: request.body.idade,
-        senha: request.body.senha,
-      },
+      data: dataToUpdate,
     });
-    response.status(201).json(usuarios);
+
+    response.status(200).json(usuario);
   } catch (error) {
     response.status(500).json({ error: error.message });
   }
-
-  response.status(203).json(request.body);
 });
 
 
