@@ -61,7 +61,7 @@ app.post("/login", async (request, response) => {
       { expiresIn: "1h" }
     );
 
-    response.json({ token });
+    response.json({ token, nome: usuario.nome });
     
   } catch (error) {
     response.status(500).json({ error: error.message });
