@@ -74,24 +74,36 @@ app.post("/login", async (request, response) => {
 
 
 
+
 // ROTA PARA CRIAR USUARIO
 app.post("/usuarios", async (request, response) => {
   try {
 
+    const { nome, email, senha, idade } = request.body;
+
+    if (!nome || !email || !senha || !idade) {
+      return response.status(400).json({ error: 'Todos os campos são obrigatórios' });
+    }
+
+    // Verifica se o usuário já existe
+    const usuarioExistente = await prisma.Usuario.findUnique({ where: { email } });
+    if (usuarioExistente) {
+      return response.status(409).json({ error: 'Email já cadastrado' });
+    }
 
     const hashedPassword = await bcrypt.hash(request.body.senha, 10);
 
-    const usuarios = await prisma.Usuario.create({
+    const novoUsuario  = await prisma.Usuario.create({
       data: {
-        nome: request.body.nome,
-        email: request.body.email,
-        idade: request.body.idade,
+        nome,
+        email,
+        idade,
         senha: hashedPassword,
       },
     });
-    response.status(201).json(usuarios);
+    response.status(201).json({ message: 'Usuário cadastrado com sucesso', novoUsuario });
   } catch (error) {
-    response.status(500).json({ error: error.message });
+    response.status(500).json({ message: 'Erro ao cadastrar', error: error.message });
   }
 });
 
