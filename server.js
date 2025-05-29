@@ -325,7 +325,7 @@ app.get("/jogos", async (req, res) => {
     res.json(jogos);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Erro ao buscar jogos." });
+    res.status(500).json({ error: error.message || "Erro ao buscar jogos." });
   }
 });
 
