@@ -4,22 +4,139 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import cors from 'cors';
+import { ObjectId } from 'mongodb';
 dotenv.config();
 
 // VARIAVEIS AMBIENTE
 
 const app = express();
+app.use(cors({
+  origin: 'http://localhost:5173', // URL frontend
+  methods: ['GET', 'POST', 'PUT', 'DELETE'], // métodos para liberar
+  credentials: true, // cookies/autenticação
+}));
 app.use(express.json());
-
 const prisma = new PrismaClient();
 
 
 
-app.use(cors({
-  origin: 'http://localhost:5173', // URL do seu frontend
-  methods: ['GET', 'POST', 'PUT', 'DELETE'], // métodos que quer liberar
-  credentials: true, // se precisar enviar cookies/autenticação
-}));
+// Endpoint pra enviar voto (usando autenticação)
+app.post("/votar", autenticarToken, async (req, res) => {
+  const { voto, jogoId } = req.body;
+  const usuarioId = req.usuario.id;
+
+  if (!voto || voto < 1 || voto > 5) {
+    return res.status(400).json({ erro: "Voto inválido. Use de 1 a 5." });
+  }
+  if (!jogoId) {
+    return res.status(400).json({ erro: "JogoId é obrigatório." });
+  }
+
+  try {
+    // Verifica se já existe voto do usuário para aquele jogo
+    const votoExistente = await prisma.voto.findUnique({
+      where: {
+        usuarioId_jogoId: { // chave composta precisa existir no schema do prisma
+          usuarioId,
+          jogoId,
+        },
+      },
+    });
+
+    if (votoExistente) {
+      // Atualiza o voto
+      await prisma.voto.update({
+        where: { id: votoExistente.id },
+        data: { valor: voto },
+      });
+    } else {
+      // Cria novo voto
+      await prisma.voto.create({
+        data: { usuarioId, jogoId, valor: voto },
+      });
+    }
+
+    // Calcula média dos votos para o jogo
+    const todosVotos = await prisma.voto.findMany({
+      where: { jogoId },
+    });
+    const soma = todosVotos.reduce((acc, v) => acc + v.valor, 0);
+    const media = soma / todosVotos.length;
+
+    return res.json({
+      message: "Voto registrado com sucesso!",
+      media,
+      totalVotos: todosVotos.length,
+      seuVoto: voto,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+
+// Endpoint para pegar a média e o voto do usuário autenticado
+app.get("/voto", autenticarTokenOpcional, async (req, res) => {
+  const usuarioId = req.usuario?.id;
+  const { jogoId } = req.query;
+
+  if (!jogoId) {
+    return res.status(400).json({ erro: "JogoId é obrigatório." });
+  }
+
+  try {
+    const todosVotos = await prisma.voto.findMany({
+      where: { jogoId },
+    });
+    const soma = todosVotos.reduce((acc, v) => acc + v.valor, 0);
+    const media = todosVotos.length > 0 ? soma / todosVotos.length : 0;
+
+    let votoUsuario = null;
+    if (usuarioId) {
+      const voto = await prisma.voto.findUnique({
+        where: {
+          usuarioId_jogoId: {
+            usuarioId,
+            jogoId,
+          },
+        },
+      });
+      votoUsuario = voto?.valor || null;
+    }
+
+    return res.json({
+      media,
+      totalVotos: todosVotos.length,
+      seuVoto: votoUsuario,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+
+//middleware tenta autenticar mas não bloqueia para a media aparecer também para usuários deslogados
+function autenticarTokenOpcional(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token) {
+    req.usuario = null;
+    return next();
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, usuario) => {
+    if (err) {
+      req.usuario = null;
+    } else {
+      req.usuario = usuario;
+    }
+    next();
+  });
+}
+
+
+
 
 
 function autenticarToken(request, response, next) {
@@ -165,7 +282,7 @@ app.get("/usuarios", autenticarToken, async (request, response) => {
 app.delete("/usuarios/:id", autenticarToken, async (request, response) => {
   try {
     await prisma.Usuario.delete({
-      where: { id: req.params.id },
+      where: { id: request.params.id },
     });
 
     res.status(200).json({ message: "Usuário deletado com sucesso" });
@@ -175,10 +292,101 @@ app.delete("/usuarios/:id", autenticarToken, async (request, response) => {
 });
 
 
+// ROTA PARA CRIAR UM JOGO
+app.post("/jogos", async (req, res) => {
+  const { nome, descricao, anoLancamento, imgCard, imgFundo } = req.body;
+
+  if (!nome || !descricao || !anoLancamento || !imgCard || !imgFundo) {
+    return res.status(400).json({ error: "Preencha todos os campos!" });
+  }
+
+  try {
+    const novoJogo = await prisma.jogo.create({
+      data: {
+        nome,
+        descricao,
+        anoLancamento,
+        imgCard,
+        imgFundo,
+      },
+    });
+
+    res.status(201).json(novoJogo);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Erro ao criar jogo." });
+  }
+});
+
+// ROTA PARA LISTAR OS JOGOS
+app.get("/jogos", async (req, res) => {
+  try {
+    const jogos = await prisma.jogo.findMany();
+    res.json(jogos);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Erro ao buscar jogos." });
+  }
+});
 
 
+// ROTA PARA BUSCAR UM JOGO PELO SEU ID
+app.get("/jogo/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const jogo = await prisma.jogo.findUnique({
+      where: { id: id },  // aqui o campo 'id' tem que bater com o nome da coluna na tabela
+    });
+
+    if (!jogo) {
+      return res.status(404).json({ error: "Jogo não encontrado." });
+    }
+
+    res.json(jogo);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Erro ao buscar o jogo." });
+  }
+});
+
+// ROTA PARA DELETAR JOGO PELO ID
+app.delete('/jogos/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.jogo.delete({
+      where: { id },
+    });
+    res.status(200).json({ message: "Jogo deletado com sucesso!" });
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao deletar jogo" });
+  }
+});
 
 
+// ROTA PARA ATUALIZAR JOGO PELO ID
+app.put("/jogos/:id", async (req, res) => {
+  const { id } = req.params;
+  const { nome, descricao, anoLancamento, imgCard, imgFundo } = req.body;
+
+  try {
+    const jogoAtualizado = await prisma.jogo.update({
+      where: { id },
+      data: {
+        nome,
+        descricao,
+        anoLancamento,
+        imgCard,
+        imgFundo,
+      },
+    });
+
+    res.json(jogoAtualizado);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Erro ao atualizar jogo." });
+  }
+});
 
 
 app.listen(3000);
