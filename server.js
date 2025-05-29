@@ -5,16 +5,19 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import cors from 'cors';
 import { ObjectId } from 'mongodb';
-dotenv.config();
 
+
+dotenv.config();
 // VARIAVEIS AMBIENTE
 
 const app = express();
 app.use(cors({
-  origin: 'http://localhost:5173', // URL frontend
-  methods: ['GET', 'POST', 'PUT', 'DELETE'], // métodos para liberar
-  credentials: true, // cookies/autenticação
+  origin: '*', // URL frontend
+  //methods: ['GET', 'POST', 'PUT', 'DELETE'], // métodos para liberar
+  //credentials: true, // cookies/autenticação
 }));
+
+
 app.use(express.json());
 const prisma = new PrismaClient();
 
