@@ -388,7 +388,8 @@ app.put("/jogos/:id", async (req, res) => {
   }
 });
 
-module.exports = app;
+export default app;
+
 
 /* 
 
