@@ -21,6 +21,8 @@ model Usuario {
   idade Int
   senha String
   votos Voto[]
+  role  String @default("user") // 'user' ou 'admin'
+  jogos Jogo[]
 }
 
 
@@ -31,7 +33,8 @@ model Jogo {
   anoLancamento Int
   imgCard      String
   imgFundo     String
-
+  usuarioId  String   @db.ObjectId
+  usuario    Usuario  @relation(fields: [usuarioId], references: [id])
   votos        Voto[]
 }
 

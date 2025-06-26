@@ -176,7 +176,7 @@ app.post("/login", async (request, response) => {
 
     
    const token = jwt.sign(
-      { id: usuario.id, email: usuario.email },
+      { id: usuario.id, email: usuario.email, role: usuario.role },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
     );
@@ -241,9 +241,9 @@ app.get("/usuarios", autenticarToken, async (request, response) => {
       },
     });
 
-    res.status(200).json(usuarios);
+    response.status(200).json(usuarios);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    response.status(500).json({ error: error.message });
   }
   
 });
@@ -282,21 +282,40 @@ app.get("/usuarios", autenticarToken, async (request, response) => {
 
 
 // ROTA PARA EXCLUIR USUARIO
-app.delete("/usuarios/:id", autenticarToken, async (request, response) => {
+app.delete("/usuarios/:id", autenticarToken, async (req, res) => {
+  const { id } = req.params;
+  const usuarioLogado = req.usuario;
+
   try {
-    await prisma.Usuario.delete({
-      where: { id: request.params.id },
+    // Só o próprio usuário ou um admin pode deletar
+    const isAdmin = usuarioLogado.role === "admin";
+
+    if (!isAdmin) {
+      return res.status(403).json({ error: "Você não tem permissão para deletar este usuário." });
+    }
+
+    await prisma.usuario.delete({
+      where: { id },
     });
 
     res.status(200).json({ message: "Usuário deletado com sucesso" });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error(error);
+    res.status(500).json({ error: "Erro ao deletar usuário" });
   }
 });
 
 
+
 // ROTA PARA CRIAR UM JOGO
-app.post("/jogos", async (req, res) => {
+app.post("/jogos", autenticarToken, async (req, res) => {
+  const usuarioLogado = req.usuario;
+
+  // Só admin pode criar
+  if (usuarioLogado.role !== "admin") {
+    return res.status(403).json({ error: "Apenas administradores podem criar jogos." });
+  }
+
   const { nome, descricao, anoLancamento, imgCard, imgFundo } = req.body;
 
   if (!nome || !descricao || !anoLancamento || !imgCard || !imgFundo) {
@@ -311,6 +330,7 @@ app.post("/jogos", async (req, res) => {
         anoLancamento,
         imgCard,
         imgFundo,
+        usuarioId: usuarioLogado.id,  // se quiser linkar o jogo ao admin que criou
       },
     });
 
@@ -320,6 +340,7 @@ app.post("/jogos", async (req, res) => {
     res.status(500).json({ error: "Erro ao criar jogo." });
   }
 });
+
 
 // ROTA PARA LISTAR OS JOGOS
 app.get("/jogos", async (req, res) => {
@@ -354,17 +375,38 @@ app.get("/jogo/:id", async (req, res) => {
 });
 
 // ROTA PARA DELETAR JOGO PELO ID
-app.delete('/jogos/:id', async (req, res) => {
+app.delete('/jogos/:id', autenticarToken, async (req, res) => {
   const { id } = req.params;
+
   try {
+    const jogo = await prisma.jogo.findUnique({
+      where: { id },
+    });
+
+    if (!jogo) {
+      return res.status(404).json({ error: "Jogo não encontrado" });
+    }
+
+    const usuarioLogado = req.usuario;
+
+    const isAdmin = usuarioLogado.role === 'admin';
+
+    if (!isAdmin) {
+      return res.status(403).json({ error: "Você não tem permissão para deletar este jogo." });
+    }
+
     await prisma.jogo.delete({
       where: { id },
     });
+
     res.status(200).json({ message: "Jogo deletado com sucesso!" });
+
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: "Erro ao deletar jogo" });
   }
 });
+
 
 
 // ROTA PARA ATUALIZAR JOGO PELO ID
@@ -392,6 +434,10 @@ app.put("/jogos/:id", async (req, res) => {
 });
 
 export default app;
+// const PORT = process.env.PORT || 3000;
+// app.listen(PORT, () => {
+//   console.log(`Servidor rodando na porta ${PORT}`);
+// });
 
 
 /* 
